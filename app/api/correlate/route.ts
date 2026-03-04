@@ -10,12 +10,14 @@ type NewsSnippet = {
   publishedAt?: string
 }
 
+const CORRELATE_VERSION = "2026-03-04-01"
+
 const MAX_ITEMS_PER_CATEGORY_SINGLE = 6
 const MAX_ITEMS_PER_CATEGORY_MULTI = 4
 const MAX_TITLE_LEN = 180
 const MAX_DESC_LEN_SINGLE = 140
 const MAX_DESC_LEN_MULTI = 80
-const OPENROUTER_TIMEOUT_MS = 12_000
+const OPENROUTER_TIMEOUT_MS = 8_000
 
 function truncate(s: string, max: number): string {
   const str = (s || "").toString().trim()
@@ -52,6 +54,10 @@ function formatItemsForPrompt(items: Array<string | NewsSnippet>): string {
       return `${i}. ${title}${source}${desc}`
     })
     .join("\n")
+}
+
+export async function GET() {
+  return NextResponse.json({ ok: true, version: CORRELATE_VERSION })
 }
 
 export async function POST(request: Request) {
@@ -195,31 +201,44 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS)
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://newsflow.vercel.app",
-        "X-Title": "NewsFlow AI Aggregator",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a professional news analyst. Always respond in Russian. Output only valid JSON without markdown code blocks.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 800,
-      }),
-    })
+    let response: Response
+    try {
+      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://newsflow.vercel.app",
+          "X-Title": "NewsFlow AI Aggregator",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: "You are a professional news analyst. Always respond in Russian. Output only valid JSON without markdown code blocks.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.2,
+          max_tokens: 800,
+        }),
+      })
+    } catch (e) {
+      clearTimeout(timeout)
+      const isAbort = e instanceof Error && (e.name === "AbortError" || e.message.toLowerCase().includes("aborted"))
+      if (isAbort) {
+        return NextResponse.json(
+          { error: "AI request timeout", model, version: CORRELATE_VERSION },
+          { status: 504 }
+        )
+      }
+      throw e
+    }
 
     clearTimeout(timeout)
 
@@ -227,7 +246,7 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
       const errText = await response.text()
       console.error("OpenRouter error:", errText)
       return NextResponse.json(
-        { error: "AI service error", details: errText, upstreamStatus: response.status, model },
+        { error: "AI service error", details: errText, upstreamStatus: response.status, model, version: CORRELATE_VERSION },
         { status: 502 }
       )
     }
@@ -269,6 +288,7 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
       mode: mode || "multi",
       model: data.model || model,
       usage: data.usage,
+      version: CORRELATE_VERSION,
     })
   } catch (error) {
     console.error("Correlation API error:", error)
