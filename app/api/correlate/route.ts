@@ -10,12 +10,12 @@ type NewsSnippet = {
   publishedAt?: string
 }
 
-const MAX_ITEMS_PER_CATEGORY_SINGLE = 12
-const MAX_ITEMS_PER_CATEGORY_MULTI = 8
+const MAX_ITEMS_PER_CATEGORY_SINGLE = 6
+const MAX_ITEMS_PER_CATEGORY_MULTI = 4
 const MAX_TITLE_LEN = 180
 const MAX_DESC_LEN_SINGLE = 140
 const MAX_DESC_LEN_MULTI = 80
-const OPENROUTER_TIMEOUT_MS = 25_000
+const OPENROUTER_TIMEOUT_MS = 12_000
 
 function truncate(s: string, max: number): string {
   const str = (s || "").toString().trim()
@@ -216,8 +216,8 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
             content: prompt,
           },
         ],
-        temperature: 0.3,
-        max_tokens: 1200,
+        temperature: 0.2,
+        max_tokens: 800,
       }),
     })
 
