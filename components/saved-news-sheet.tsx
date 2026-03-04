@@ -33,7 +33,7 @@ export function SavedNewsSheet({ open, onOpenChange }: { open: boolean; onOpenCh
           </div>
         </SheetHeader>
 
-        <div className="flex flex-col gap-2 p-4 overflow-auto">
+        <div className="flex flex-col gap-2 p-4 overflow-auto no-scrollbar">
           {items.length === 0 ? (
             <div className="text-sm text-muted-foreground">{t("favorites.empty")}</div>
           ) : (

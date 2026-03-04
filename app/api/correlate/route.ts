@@ -10,13 +10,45 @@ type NewsSnippet = {
   publishedAt?: string
 }
 
+const MAX_ITEMS_PER_CATEGORY_SINGLE = 12
+const MAX_ITEMS_PER_CATEGORY_MULTI = 8
+const MAX_TITLE_LEN = 180
+const MAX_DESC_LEN_SINGLE = 140
+const MAX_DESC_LEN_MULTI = 80
+const OPENROUTER_TIMEOUT_MS = 25_000
+
+function truncate(s: string, max: number): string {
+  const str = (s || "").toString().trim()
+  if (str.length <= max) return str
+  return `${str.slice(0, max).trim()}…`
+}
+
+function coerceSnippets(items: unknown, maxItems: number, maxDesc: number): NewsSnippet[] {
+  if (!Array.isArray(items)) return []
+  return (items as unknown[])
+    .map((it) => {
+      if (typeof it === "string") return { title: truncate(it, MAX_TITLE_LEN) }
+      if (!it || typeof it !== "object") return null
+      const o = it as any
+      const title = truncate(String(o.title || ""), MAX_TITLE_LEN)
+      const description = o.description ? truncate(String(o.description), maxDesc) : undefined
+      const source = o.source ? truncate(String(o.source), 80) : undefined
+      const url = o.url ? String(o.url) : undefined
+      const publishedAt = o.publishedAt ? String(o.publishedAt) : undefined
+      if (!title) return null
+      return { title, description, source, url, publishedAt } satisfies NewsSnippet
+    })
+    .filter((x): x is NewsSnippet => Boolean(x))
+    .slice(0, maxItems)
+}
+
 function formatItemsForPrompt(items: Array<string | NewsSnippet>): string {
   return items
     .map((item, i) => {
       if (typeof item === "string") return `${i}. ${item}`
-      const title = (item.title || "").toString()
+      const title = truncate((item.title || "").toString(), MAX_TITLE_LEN)
       const source = item.source ? ` (${item.source})` : ""
-      const desc = item.description ? ` — ${item.description}` : ""
+      const desc = item.description ? ` — ${truncate(item.description, MAX_DESC_LEN_SINGLE)}` : ""
       return `${i}. ${title}${source}${desc}`
     })
     .join("\n")
@@ -35,7 +67,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const model = process.env.OPENROUTER_MODEL || "qwen/qwen3-vl-235b-a22b-thinking"
+    const model = process.env.OPENROUTER_CORRELATE_MODEL
+      || process.env.OPENROUTER_MODEL
+      || "qwen/qwen3-vl-235b-a22b-thinking"
 
     const allCats: NewsCategory[] = ["politics", "world", "business", "stocks", "technology", "science", "crypto"]
     const allowedCats = Array.isArray(analysisCategories)
@@ -61,9 +95,7 @@ export async function POST(request: Request) {
             : cat === "technology" ? "ТЕХНОЛОГИИ"
             : cat === "science" ? "НАУКА"
             : "КРИПТО"
-          const list = Array.isArray(items)
-            ? formatItemsForPrompt(items as Array<string | NewsSnippet>)
-            : ""
+          const list = formatItemsForPrompt(coerceSnippets(items, MAX_ITEMS_PER_CATEGORY_SINGLE, MAX_DESC_LEN_SINGLE))
           return `${catLabel}:\n${list || "Нет данных"}`
         })
         .join("\n\n")
@@ -128,14 +160,11 @@ ${includeSameCategory ? "- Можно включать категорию выб
 
         if (itemsByCategory && typeof itemsByCategory === "object") {
           const byCat = itemsByCategory as Record<string, unknown>
-          const items = byCat[cat]
-          if (Array.isArray(items)) {
-            list = formatItemsForPrompt(items as Array<string | NewsSnippet>) || "Нет данных"
-          }
+          list = formatItemsForPrompt(coerceSnippets(byCat[cat], MAX_ITEMS_PER_CATEGORY_MULTI, MAX_DESC_LEN_MULTI)) || "Нет данных"
         } else {
           const items = headlines?.[cat]
           if (Array.isArray(items)) {
-            list = formatItemsForPrompt(items as Array<string | NewsSnippet>) || "Нет данных"
+            list = formatItemsForPrompt(coerceSnippets(items, MAX_ITEMS_PER_CATEGORY_MULTI, MAX_DESC_LEN_MULTI)) || "Нет данных"
           }
         }
 
@@ -163,8 +192,12 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
 }`
     }
 
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS)
+
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
@@ -183,10 +216,12 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
             content: prompt,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 2000,
+        temperature: 0.3,
+        max_tokens: 1200,
       }),
     })
+
+    clearTimeout(timeout)
 
     if (!response.ok) {
       const errText = await response.text()

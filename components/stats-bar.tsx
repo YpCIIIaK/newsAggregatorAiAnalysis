@@ -39,7 +39,7 @@ export function StatsBar({ news, sourceCounts }: StatsBarProps) {
 
   return (
     <div className="border-b border-border bg-card/30">
-      <div className="mx-auto max-w-[1600px] px-4 py-2 flex items-center gap-6 overflow-x-auto">
+      <div className="mx-auto max-w-[1600px] px-4 py-2 flex items-center gap-6 overflow-x-auto no-scrollbar">
         {(["politics", "world", "business", "stocks", "technology", "science", "crypto"] as NewsCategory[]).map((cat) => (
           <div key={cat} className="flex items-center gap-2 shrink-0">
             <span className={categoryColors[cat]}>{categoryIcons[cat]}</span>
