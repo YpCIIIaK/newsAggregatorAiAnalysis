@@ -65,6 +65,9 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { headlines, mode, focusItem, allHeadlines, itemsByCategory, includeSameCategory, analysisCategories } = body
 
+    const referer = request.headers.get("origin")
+      || (request.headers.get("host") ? `https://${request.headers.get("host")}` : "https://newsflow.vercel.app")
+
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
       return NextResponse.json(
@@ -209,7 +212,7 @@ Provide your analysis in this exact JSON format (respond ONLY with valid JSON, n
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://newsflow.vercel.app",
+          "HTTP-Referer": referer,
           "X-Title": "NewsFlow AI Aggregator",
         },
         body: JSON.stringify({

@@ -124,7 +124,7 @@ export function CorrelationPanel({
       allHeadlines[cat] = (news[cat] || [])
         .filter((n) => !(cat === item.category && n.id === item.id))
         .map((n) => ({
-        title: n.title,
+        title: n.title, 
         description: n.description,
         source: n.source,
         url: n.url,
